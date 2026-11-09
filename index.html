@@ -630,23 +630,31 @@ const trunc=(s,n)=>{s=String(s||'');return s.length>n?s.slice(0,Math.max(1,n-1))
 function nextOpenDays(n){const out=[];let d=S.today;for(let i=0;i<45&&out.length<n;i++,d=addD(d,1))if(isOpen(d))out.push(d);return out}
 
 /* ═════════════ เรียก Apps Script ═════════════ */
-function rpc(fn,...args){
-  return new Promise((res,rej)=>{
-    if(!(window.google&&google.script&&google.script.run))return rej(new Error('กรุณาเปิดผ่านลิงก์ Web App ที่ Deploy แล้ว'));
-    google.script.run.withSuccessHandler(r=>{if(r&&r.ok===false)rej(new Error(r.error||'เกิดข้อผิดพลาด'));else res(r)})
-      .withFailureHandler(e=>rej(new Error((e&&e.message)||String(e))))[fn](...args);
+// URL Web App จากขั้นตอนที่ 1
+const API_URL = 'https://script.google.com/macros/s/AKfycbz0Tpryfb36JdiiSjfMhBsKknUP1uicB3uBwzVXTK41ziU-RGA7i_FyridzPggDyN7Rqw/exec';
+
+function rpc(fn, ...args) {
+  // หากเปิดใน Apps Script โดยตรง ให้ใช้ google.script.run ตามเดิม
+  if (window.google && google.script && google.script.run) {
+    return new Promise((res, rej) => {
+      google.script.run
+        .withSuccessHandler(r => { if (r && r.ok === false) rej(new Error(r.error || 'เกิดข้อผิดพลาด')); else res(r); })
+        .withFailureHandler(e => rej(new Error((e && e.message) || String(e))))[fn](...args);
+    });
+  }
+
+  // หากเปิดจาก GitHub Pages ให้ยิงผ่าน Fetch API
+  return fetch(API_URL, {
+    method: 'POST',
+    // ใช้ text/plain เลี่ยงการทำ Preflight OPTIONS request ของเบราว์เซอร์ ซึ่ง Apps Script ไม่รองรับ
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ fn: fn, args: args })
+  })
+  .then(res => res.json())
+  .then(r => {
+    if (r && r.ok === false) throw new Error(r.error || 'เกิดข้อผิดพลาด');
+    return r;
   });
-}
-let busyN=0;
-const busy=on=>{busyN=Math.max(0,busyN+(on?1:-1));$('#busy').classList.toggle('on',busyN>0)};
-async function call(fn,...args){
-  busy(1);
-  try{return await rpc(fn,...args)}
-  catch(e){
-    if(/เซสชันหมดอายุ/.test(e.message)&&S.user){S.user=null;setToken('');paint();toast('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่','err');openAuth('login')}
-    else toast(e.message,'err');
-    throw e;
-  }finally{busy(0)}
 }
 function toast(msg,kind){const t=document.createElement('div');t.className='t '+(kind||'');t.innerHTML=(kind==='ok'?ico('check',18):ico('x',18))+'<span>'+msg+'</span>';$('#toast').appendChild(t);setTimeout(()=>t.remove(),kind==='err'?4600:2800)}
 
